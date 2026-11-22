@@ -700,6 +700,8 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .tool:hover{background:#efe7d5}
   .tool.gold{color:#8a5a26;border-color:#8a5a26}
   .tours{position:fixed;bottom:54px;left:50%;transform:translateX(-50%);z-index:2100;display:none;background:rgba(11,18,14,.85);color:#C3A15C;font-family:"KaiTi","楷体",serif;font-size:17px;letter-spacing:2px;padding:9px 26px;border:1px solid rgba(195,161,92,.55);white-space:nowrap;}
+  .nextbtn{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:2101;display:none;background:rgba(250,246,235,.96);border:1.6px solid #4a4238;color:#8a5a26;font-family:"KaiTi","楷体",serif;font-size:15.5px;font-weight:bold;letter-spacing:1px;padding:8px 22px;cursor:pointer;box-shadow:2px 2px 0 rgba(74,66,56,.3);border-radius:3px;}
+  .nextbtn:hover{background:#FFF1CE;color:#6d4012;}
   #quiz{background:#f3eddd;}
   .quiz-wrap{position:absolute;inset:0;overflow:auto;padding:64px 130px 40px;font-family:"KaiTi","楷体",serif;}
   .quiz-wrap h1{margin:0;font-size:30px;color:#2b2b2b;letter-spacing:3px;}
@@ -738,6 +740,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   </div>
 </div>
 <div class="tours" id="tours"></div>
+<div class="nextbtn" id="nextbtn">▶ 下一段</div>
 <div class="hint">右上 ♪ 茶室配乐 · ▶ 自动导览 · 可拖动缩放 · F11 全屏 —— 人文地理学课程作业自绘交互地图</div>
 <script>/* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -915,31 +918,46 @@ document.getElementById('audiobtn').addEventListener('click',()=>{
   b.style.borderColor = musicOn ? '#C3A15C' : '#4a4238';
 });
 
-/* ===== 自动导览（纪录片式飞行） ===== */
-let tourTimers=[], touring=false;
+/* ===== 自动导览（分段式：点一次走一段） ===== */
+let touring=false, stopIdx=0, stopTimer=null;
 function sub(t){ const e=document.getElementById('tours'); e.style.display='block'; e.textContent=t; }
-function startTour(){
-  touring=true; document.getElementById('tourbtn').textContent='■ 停止导览';
-  const seq=[
-    [0,    ()=>{ activateTab('1'); sub('① 案例定位：北纬 27.2°，太姥山麓 · 点头茶市'); }],
-    [3600, ()=>{ map1.flyTo([27.16,120.14],10,{duration:2.6}); sub('太姥山：白茶发源地传说 · 海上仙都'); }],
-    [7600, ()=>{ activateTab('2'); sub('② 双产区：同一种工艺，两种地理答案'); }],
-    [10600,()=>{ map2.flyTo([27.35,118.9],8,{duration:2.6}); sub('山 · 政和：内陆高山 800m+'); }],
-    [14100,()=>{ map2.flyTo([27.25,120.1],9,{duration:2.6}); sub('海 · 福鼎：滨海雾区，20 千米即海'); }],
-    [17600,()=>{ activateTab('3'); sub('③ 山场分异：海拔即风味'); }],
-    [20600,()=>{ map3.flyTo([27.24,120.06],11,{duration:2.6}); sub('磻溪·管阳：600–800m 核心高山茶区'); }],
-    [24200,()=>{ activateTab('1'); sub('看天做青 —— 谢谢观看'); stopTour(); }],
-  ];
-  seq.forEach(([t,fn])=>tourTimers.push(setTimeout(fn,t)));
+function hideNext(){ document.getElementById('nextbtn').style.display='none'; }
+const STOPS=[
+  {cap:'① 案例定位：北纬 27.2°，太姥山麓 · 点头茶市', wait:900, run:()=>activateTab('1')},
+  {cap:'太姥山：白茶发源地传说 · 海上仙都', wait:2700, run:()=>map1.flyTo([27.16,120.14],10,{duration:2.6})},
+  {cap:'② 双产区：同一种工艺，两种地理答案', wait:900, run:()=>activateTab('2')},
+  {cap:'山 · 政和：内陆高山 800m+', wait:2700, run:()=>map2.flyTo([27.35,118.9],8,{duration:2.6})},
+  {cap:'海 · 福鼎：滨海雾区，20 千米即海', wait:2700, run:()=>map2.flyTo([27.25,120.1],9,{duration:2.6})},
+  {cap:'③ 山场分异：海拔即风味', wait:900, run:()=>activateTab('3')},
+  {cap:'磻溪·管阳：600–800m 核心高山茶区', wait:2700, run:()=>map3.flyTo([27.24,120.06],11,{duration:2.6})},
+  {cap:'看天做青 —— 谢谢观看', wait:700, run:()=>activateTab('1')},
+];
+function showNext(i){
+  const nb=document.getElementById('nextbtn');
+  nb.textContent = (i>=STOPS.length-1) ? '■ 结束导览' : '▶ 下一段 ('+(i+1)+'/'+STOPS.length+')';
+  nb.style.display='block';
 }
+function playStop(i){
+  stopIdx=i; const st=STOPS[i];
+  sub(st.cap); hideNext();
+  try { st.run(); } catch(e) { if (window.__errs) window.__errs.push('tour: '+e.message); }
+  clearTimeout(stopTimer);
+  stopTimer=setTimeout(()=>{ if (touring) showNext(i); }, st.wait);
+}
+function startTour(){ touring=true; document.getElementById('tourbtn').textContent='■ 停止导览'; playStop(0); }
 function stopTour(){
-  tourTimers.forEach(clearTimeout); tourTimers=[]; touring=false;
+  touring=false; clearTimeout(stopTimer); hideNext();
   document.getElementById('tourbtn').textContent='▶ 自动导览';
-  setTimeout(()=>{ document.getElementById('tours').style.display='none'; }, 1200);
+  setTimeout(()=>{ if(!touring) document.getElementById('tours').style.display='none'; }, 1200);
 }
 document.getElementById('tourbtn').addEventListener('click',()=>{
   if (touring) { stopTour(); } else { startTour(); }
 });
+document.getElementById('nextbtn').addEventListener('click',()=>{
+  if (!touring) return;
+  if (stopIdx>=STOPS.length-1) { stopTour(); } else { playStop(stopIdx+1); }
+});
+document.addEventListener('keydown',e=>{ if (e.key==='Escape' && touring) stopTour(); });
 
 /* ===== 考考同学 ===== */
 const QUIZ=[
